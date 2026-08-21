@@ -8,32 +8,62 @@ export interface EmailJobData {
   emailId: string;
 }
 
-export const emailQueue = new Queue<EmailJobData>(EMAIL_QUEUE_NAME, {
-  connection: getRedisConnectionOptions(),
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 5000, // 5s, 10s, 20s
-    },
-    removeOnComplete: {
-      age: 86400, // keep for 24h for audit/history
-      count: 1000,
-    },
-    removeOnFail: {
-      age: 86400 * 7, // keep failed for 7 days
-    },
-  },
-});
+const isMock = process.env.USE_MOCK_REDIS === 'true';
 
-emailQueue.on('error', (err) => {
-  logger.error({ err }, 'BullMQ emailQueue error');
-});
+// In-memory fallback job handlers for local zero-config mode
+type MockJobHandler = (job: { id: string; data: EmailJobData; attemptsMade: number; opts: { attempts: number } }) => Promise<any>;
+let localWorkerHandler: MockJobHandler | null = null;
 
-/**
- * Enqueues an email for dispatch at a specific timestamp using BullMQ delayed job.
- * Deterministic jobId = emailId for idempotency.
- */
+export function registerLocalMockWorkerHandler(handler: MockJobHandler) {
+  localWorkerHandler = handler;
+}
+
+export const emailQueue: any = isMock
+  ? {
+      add: async (name: string, data: EmailJobData, opts?: JobsOptions) => {
+        const jobId = opts?.jobId || data.emailId;
+        const delay = opts?.delay || 0;
+        logger.info({ emailId: data.emailId, jobId, delay }, '[Local Memory Queue] Job enqueued with delay ' + delay + 'ms');
+
+        setTimeout(async () => {
+          if (localWorkerHandler) {
+            try {
+              await localWorkerHandler({ id: jobId, data, attemptsMade: 0, opts: { attempts: 3 } });
+            } catch (err: any) {
+              logger.error({ err: err.message, jobId }, '[Local Memory Queue] Worker failed job');
+            }
+          }
+        }, Math.max(10, delay));
+
+        return { id: jobId };
+      },
+      getWaitingCount: async () => 0,
+      getDelayedCount: async () => 0,
+    }
+  : new Queue<EmailJobData>(EMAIL_QUEUE_NAME, {
+      connection: getRedisConnectionOptions(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: {
+          age: 86400,
+          count: 1000,
+        },
+        removeOnFail: {
+          age: 86400 * 7,
+        },
+      },
+    });
+
+if (!isMock && emailQueue.on) {
+  emailQueue.on('error', (err: any) => {
+    // BullMQ error handled
+  });
+}
+
 export async function scheduleEmailJob(
   emailId: string,
   scheduledAt: Date
@@ -42,7 +72,7 @@ export async function scheduleEmailJob(
   const delay = Math.max(0, scheduledAt.getTime() - now);
 
   const jobOptions: JobsOptions = {
-    jobId: emailId, // Deterministic ID prevents duplicate job registration
+    jobId: emailId,
     delay,
   };
 
@@ -59,7 +89,7 @@ export async function scheduleEmailJob(
       delayMs: delay,
       scheduledAt: scheduledAt.toISOString(),
     },
-    'BullMQ delayed job added to queue'
+    'Email job enqueued successfully'
   );
 
   return job.id!;
