@@ -79,14 +79,22 @@ export async function sendEmail(options: SendMailOptions): Promise<SendMailResul
   let transporter: Transporter;
   let fromAddress: string;
 
-  if (options.sender && options.sender.smtpUser && options.sender.smtpPassword) {
+  const hasCustomSmtp =
+    options.sender &&
+    options.sender.smtpUser &&
+    options.sender.smtpPassword &&
+    options.sender.smtpPassword !== 'default_password' &&
+    options.sender.smtpHost !== 'smtp.ethereal.email';
+
+  if (hasCustomSmtp && options.sender) {
     transporter = getCustomSmtpTransporter(options.sender);
     fromAddress = options.sender.displayName
       ? `"${options.sender.displayName}" <${options.sender.email || options.sender.smtpUser}>`
       : options.sender.email || options.sender.smtpUser;
   } else {
     transporter = await initDefaultSmtpTransporter();
-    fromAddress = `"${config.ethereal.fromName}" <${currentEtherealUser || config.ethereal.fromEmail}>`;
+    const displayName = options.sender?.displayName || config.ethereal.fromName;
+    fromAddress = `"${displayName}" <${currentEtherealUser || config.ethereal.fromEmail}>`;
   }
 
   const isHtml = /<[a-z][\s\S]*>/i.test(options.body);

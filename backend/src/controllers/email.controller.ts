@@ -185,7 +185,9 @@ export class EmailController {
         campaign: {
           userId,
         },
-        status: 'SENT',
+        status: {
+          in: ['SENT', 'FAILED'],
+        },
       };
 
       if (search) {
