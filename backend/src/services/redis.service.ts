@@ -38,11 +38,13 @@ export const getRedisConnectionOptions = () => {
   }
   try {
     const url = new URL(config.redisUrl);
+    const isTls = url.protocol === 'rediss:';
     return {
       host: url.hostname || 'localhost',
       port: parseInt(url.port || '6379', 10),
       password: url.password || undefined,
       username: url.username || undefined,
+      tls: isTls ? {} : undefined,
       maxRetriesPerRequest: null,
     };
   } catch {

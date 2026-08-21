@@ -52,10 +52,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithGoogle = async () => {
     try {
       const url = await authApi.getGoogleAuthUrl();
-      window.location.href = url;
+      if (url) {
+        window.location.href = url;
+      }
     } catch (err: any) {
-      console.error('Google login error:', err);
-      alert('Google OAuth is not configured yet with valid client ID. You can use the instant Demo Login to test all features!');
+      const msg = err.response?.data?.error || 'Google OAuth is not configured yet with valid Client ID & Secret in backend/.env. You can use the Email & Password login below to access everything immediately!';
+      alert(msg);
     }
   };
 

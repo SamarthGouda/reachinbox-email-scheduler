@@ -8,6 +8,12 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 export class AuthController {
   public static async getGoogleUrl(_req: Request, res: Response, next: NextFunction) {
     try {
+      if (!config.google.clientId || config.google.clientId.trim() === '') {
+        res.status(400).json({
+          error: 'Google OAuth credentials not configured yet. Please paste GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET into backend/.env, or use the Email/Password login.',
+        });
+        return;
+      }
       const url = AuthService.getGoogleAuthUrl();
       res.json({ url });
     } catch (error) {
